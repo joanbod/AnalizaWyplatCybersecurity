@@ -1,0 +1,234 @@
+---
+title: "Analiza danych wypłat w sektorze cybersecurity"
+output:
+  html_document:
+    code_folding: show
+    theme:
+      bg: '#202123'
+      fg: '#B8BCC2'
+      primary: '#EA80FC'
+      secondary: '#00DAC6'
+      base_font:
+        google: Prompt
+      heading_font:
+        google: Proza Libre
+  pdf_document: default
+---
+
+### Źródło danych
+
+Dane pochodzą ze zbiuru dostępnego na stronie Kaggle pod adresem: <https://www.kaggle.com/datasets/deepcontractor/cyber-security-salaries>
+
+### Kolumny
+
+-   **work_year** - rok,z którego pochodzi wypłata
+-   **experience_level** - poziom doświadczenia
+-   **employment_type** - rodzaj zatrudnienia
+-   **job_title** - nazwa stanowiska pracy
+-   **salary** - wypłata we oryginalnej walucie
+-   **salary_currency** - waluta wypłaty w kodzie ISO 4217
+-   **salary_in_usd** - wypłata w usd
+-   **employee_residence** - obywatelstwo pracownika
+-   **remote_ratio** - praca zdalna, hybrydowa, na miejscu
+-   **company_location** - kraj siedziby firmy
+-   **company_size** - rozmiar firmy
+
+### Import pakietów oraz bibliotek
+
+Pakiet `tidyverse` to zestaw pakietów do kompleksowego przetwarzania i wizualizacji danych. W związku z tym załadowuje pakiet.
+
+```{r setup, include=FALSE}
+if (requireNamespace("thematic")) 
+  thematic::thematic_rmd(font = "auto")
+```
+
+### Import pakietów oraz bibliotek
+
+Pakiet `tidyverse` to zestaw pakietów do kompleksowego przetwarzania i wizualizacji danych. W związku z tym załadowuje pakiet.
+
+```{r}
+library(tidyverse)
+```
+
+### Wczytanie danych
+
+```{r}
+cybersecurity <- read_csv("salaries_cyber.csv")
+
+```
+
+### Prezentacja zaczytanych danych
+
+Przedstawienie podstawowych statystyk załadowanego zbioru danych oraz zapoznanie się z przykładowymi wartościami i ich typami.
+
+```{r}
+summary(cybersecurity)
+head(cybersecurity)
+glimpse(cybersecurity)
+```
+
+Przedstawienie unikatowych wartości we wybranej kolumnie oraz liczby nie powtarzających się rekordów.
+
+```{r}
+cybersecurity %>%
+  distinct(company_location)
+
+cybersecurity %>%
+  summarise(n = n_distinct(job_title))
+```
+
+### Weryfikacja wartości pustych
+
+W zbiorze danych nie występują wartości puste.
+
+```{r}
+
+sum(is.na(cybersecurity))
+```
+
+### Usunięcie zbędnych kolumn
+
+W zbiorze występują 3 kolumny odnoszące się do wypłaty. W celu zapewnienia uniwersalności danych pozostawiono tylko kolumne z wypłata podaną we walucie usd.
+
+```{r}
+cybersecurity <- cybersecurity %>%
+                  subset() %>%
+                  select(-c("salary","salary_currency"))
+head(cybersecurity)
+```
+
+### Operacje na danych
+
+#### Filtrowanie po nazwie stanowiska oraz lokalizacji siedziby firmy informacji na temat wypłaty w usd i obywatelstwa pracownika.
+
+```{r}
+cybersecurity %>%
+  filter(job_title=="Security Analyst" & company_location=="CA") %>%
+  select(job_title, salary_in_usd, company_location, employee_residence)
+```
+
+#### Przedstawienie 10 największych stawek pracowników.
+
+```{r}
+cybersecurity %>%
+  arrange(desc(salary_in_usd))%>%
+  select(-c("employee_residence":"company_size"))%>%
+  head(10)
+```
+
+#### Przedstawienie liczebności oraz podstawowych statystyk dla podgrup kolumny odpowiadającej za poziom doświadczenia. Wynik posortowany po średniej wypłaty rosnąco.
+
+```{r}
+salary_to_experience = cybersecurity %>%
+    group_by(experience_level) %>%
+    summarise(liczebnosc=n(),
+            wyplata_srednia=mean(salary_in_usd),
+            wyplata_mediana=median(salary_in_usd)) %>%
+    arrange(wyplata_srednia)
+    
+
+print(salary_to_experience)
+
+salary_to_experience %>%
+mutate(experience_level = fct_reorder(experience_level, desc(liczebnosc))) %>%
+  ggplot(aes(x="", y=liczebnosc, fill=experience_level))+
+  geom_bar(stat="identity", width=1, color="white") +
+  coord_polar("y", start=0) +
+  theme_void() +
+  theme(plot.background = 
+          element_rect(fill = "#BFD5E3",
+                       colour = "#6D9EC1",
+                       linewidth = 2,
+                       linetype = "solid"),
+        plot.title = element_text(          
+                   size = 12,                
+                   face = 'bold',            
+                   hjust = 2,                
+                   vjust = 2),)+
+  labs(title = "Ilość pracowników z danym doświadczeniem")
+```
+
+#### Przedstawienie 10 najpopularniejszych stanowisk pracy.
+
+```{r}
+most_popular_titles = cybersecurity %>%
+  group_by(job_title) %>%
+  summarise(amount=n()) %>%
+  arrange(desc(amount)) %>%
+  head(10)
+
+print(most_popular_titles)
+
+most_popular_titles %>%
+  mutate(job_title = fct_reorder(job_title, amount)) %>%
+  ggplot(aes(x=job_title, y=amount)) +
+  geom_bar(stat="identity", fill=rgb(0.1,0.4,0.5,1)) +
+  coord_flip() +
+  labs(x = "Nazwa stanowiska", y = "Ilość pracowników")
+
+  
+```
+
+#### Wykres pudełkowy stawek pracowników zarejestrowanych w poszczególnych latach
+
+```{r}
+
+ggplot(cybersecurity, aes(x=as.factor(work_year), y=salary_in_usd)) + 
+    geom_boxplot(fill="white", alpha=1) + 
+    xlab("Rok pracy") +
+    ylab("Zarobki (USD)") +
+    theme(
+      panel.background = element_rect(fill = "#BFD5E3", colour = "#6D9EC1",
+                                linewidth = 2, linetype = "solid"),
+      panel.grid.major = element_line(linewidth = 0.5, linetype = 'solid',
+                                colour = "white"), 
+     panel.grid.minor = element_line(linewidth = 0.25, linetype = 'solid',
+                                colour = "white"))
+    
+```
+
+#### Wykres pokazujący częstotliwość pracy zdalnej dla pracowników z poszczególnym stażem pracy
+
+```{r}
+remote_grouped = cybersecurity %>%
+  group_by(experience_level, remote_ratio)%>%
+  summarise(amount = n()) %>%
+  group_by(experience_level) %>%
+  summarise(remote_ratio, percentage = (amount/sum(amount))* 100)
+
+remote_grouped$remote_ratio = as.character(remote_grouped$remote_ratio)
+
+print(remote_grouped)
+
+ggplot(remote_grouped, aes(fill=remote_ratio, y=percentage, x=experience_level)) +
+    geom_bar(position = "dodge", stat="identity") +
+    xlab("Poziom doświadczenia") +
+    ylab("Ilość pracowników z danym doświadczeniem (%)")
+```
+
+### Przedstawienie 10 zawodów z największą średnią wypłatą w 2022 roku
+
+```{r}
+jobs_grouped = cybersecurity %>%
+  filter(work_year == 2022) %>%
+  group_by(job_title) %>%
+  summarise(avg_salary = mean(salary_in_usd)) %>% 
+  arrange(desc(avg_salary)) %>%
+  head(10)
+
+print(jobs_grouped)
+
+jobs_grouped %>%
+  mutate(job_title = fct_reorder(job_title, avg_salary)) %>%
+  ggplot(aes(x=job_title, y=avg_salary)) +
+  geom_bar(stat="identity", fill=rgb(0.4,0.3,0.6,1)) +
+  coord_flip() +
+  labs(x = "Nazwa stanowiska") +
+  scale_y_continuous(name="Średnie zarobki (USD)", labels = scales::comma)
+```
+
+# Dziękujemy za uwagę
+
+## Autorzy
+
+Joanna Bodora, Piotr Kołodziejski
